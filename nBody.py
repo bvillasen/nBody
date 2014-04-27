@@ -14,23 +14,24 @@ currentDirectory = os.getcwd()
 parentDirectory = currentDirectory[:currentDirectory.rfind("/")]
 toolsDirectory = parentDirectory + "/tools"
 sys.path.append( toolsDirectory )
-from cudaTools import setCudaDevice, getFreeMemory
+from cudaTools import setCudaDevice, getFreeMemory, kernelMemoryInfo
 from tools import printProgress
 
 
-nParticles = 1024*8
-dt = 10.
-epsilon = 1e-6
+nParticles = 1024*8*2
+dt = 5.
+epsilon = 5.
 
 cudaP = "float"
 devN = None
 usingAnimation = True
-
+showKernelMemInfo = False
 
 #Read in-line parameters
 for option in sys.argv:
   if option.find("part")>=0 : nParticles = int(option[option.find("=")+1:])
   if option.find("anim")>=0: usingAnimation = True
+  if option.find("mem") >=0: showKernelMemInfo = True
   if option == "double": cudaP = "double"
   if option == "float": cudaP = "float"
   if option.find("dev") >= 0 : devN = int(option[-1])
@@ -74,6 +75,9 @@ cudaCodeStringTemp = open("cudaNbody.cuT", "r").read()
 cudaCodeString = cudaCodeStringTemp % { "THREADS_PER_BLOCK":block[0] }
 cudaCode = SourceModule(cudaCodeString, no_extern_c=True, include_dirs=[currentDirectory])
 mainKernel = cudaCode.get_function("main_kernel" )
+if showKernelMemInfo: 
+  kernelMemoryInfo(mainKernel, 'mainKernel')
+  sys.exit()
 ########################################################################
 from pycuda.elementwise import ElementwiseKernel
 ########################################################################
@@ -88,21 +92,29 @@ moveParticles = ElementwiseKernel(arguments="float dt, float *posX, float *posY,
 #Initialize all gpu data
 print "Initializing Data"
 initialMemory = getFreeMemory( show=True )  
-posX_h = 5000.*np.random.random( nParticles ).astype(cudaPre) - 2500.
-posY_h = 5000.*np.random.random( nParticles ).astype(cudaPre) - 2500.
-posZ_h = 5000.*np.random.random( nParticles ).astype(cudaPre) - 2500.
-velX_h = 1.*np.random.random( nParticles ).astype(cudaPre) - 0.5
-velY_h = 1.*np.random.random( nParticles ).astype(cudaPre) - 0.5
-velZ_h = 1.*np.random.random( nParticles ).astype(cudaPre) - 0.5
+#Spherically uniform random distribution for initial positions
+initialTheta = 2*np.pi*np.random.rand(nParticles).astype(cudaPre) 
+initialPhi = np.arccos(2*np.random.rand(nParticles).astype(cudaPre) - 1) 
+initialR = 5000.**3#*np.random.random( nParticles ).astype(cudaPre)
+initialR = np.power(initialR, 1./3)
+posX_h = initialR*np.cos(initialTheta)*np.sin(initialPhi)
+posY_h = initialR*np.sin(initialTheta)*np.sin(initialPhi)
+posZ_h = initialR*np.cos(initialPhi)
+posX_h[:nParticles/2] += 5000
+posX_h[nParticles/2:] -= 5000
+#Spherically uniform random distribution for initial velocity
+initialTheta = 2*np.pi*np.random.rand(nParticles).astype(cudaPre) 
+initialPhi = np.arccos(2*np.random.rand(nParticles).astype(cudaPre) - 1)
+initialR = 0.
+velX_h = initialR*np.cos(initialTheta)*np.sin(initialPhi)
+velY_h = initialR*np.sin(initialTheta)*np.sin(initialPhi)
+velZ_h = initialR*np.cos(initialPhi)
 posX_d = gpuarray.to_gpu( posX_h )
 posY_d = gpuarray.to_gpu( posY_h )
 posZ_d = gpuarray.to_gpu( posZ_h )
 velX_d = gpuarray.to_gpu( velX_h )
 velY_d = gpuarray.to_gpu( velY_h )
 velZ_d = gpuarray.to_gpu( velZ_h )
-#outPosX_d = gpuarray.to_gpu( posX_h  )
-#outPosY_d = gpuarray.to_gpu( posY_h  )
-#outPosZ_d = gpuarray.to_gpu( posZ_h  )
 accelX_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelY_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelZ_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
@@ -119,10 +131,6 @@ def animationUpdate():
 	      accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon),
 	      np.intp(pAnim.cuda_VOB_ptr),  grid=grid, block=block)
-  #temp = ( posX_d, posY_d, posZ_d )
-  #posX_d, posY_d, posZ_d = outPosX_d, outPosY_d, outPosZ_d
-  #outPosX_d, outPosY_d, outPosZ_d = temp
-  #copyDtoD_float3D(outPosX_d, outPosY_d, outPosZ_d, posX_d, posY_d, posZ_d)
   nAnimIter += 1
 
 

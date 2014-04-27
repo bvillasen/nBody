@@ -24,7 +24,7 @@ __global__ void main_kernel( const unsigned char usingAnimation, const unsigned 
     Vector3D vel( velX[tid], velY[tid], velZ[tid] );
     
     
-    //Initialize shared array for positions of other paerticles
+    //Initialize shared array for positions of other particles
     __shared__ float posX_sh[ %(THREADS_PER_BLOCK)s ];
     __shared__ float posY_sh[ %(THREADS_PER_BLOCK)s ];
     __shared__ float posZ_sh[ %(THREADS_PER_BLOCK)s ];
@@ -34,8 +34,8 @@ __global__ void main_kernel( const unsigned char usingAnimation, const unsigned 
     cudaP dist;
     for ( int blockNumber=0; blockNumber<gridDim.x; blockNumber++ ){
       posX_sh[ threadIdx.x ] = posX[ blockNumber*blockDim.x + threadIdx.x];
-      posY_sh[ threadIdx.x ] = posX[ blockNumber*blockDim.x + threadIdx.x];
-      posZ_sh[ threadIdx.x ] = posX[ blockNumber*blockDim.x + threadIdx.x];
+      posY_sh[ threadIdx.x ] = posY[ blockNumber*blockDim.x + threadIdx.x];
+      posZ_sh[ threadIdx.x ] = posZ[ blockNumber*blockDim.x + threadIdx.x];
       __syncthreads();
       
       for ( int otherParticle=0; otherParticle<blockDim.x; otherParticle++ ){
@@ -46,7 +46,7 @@ __global__ void main_kernel( const unsigned char usingAnimation, const unsigned 
 	deltaPos = deltaPos/(1./( dist*dist*dist ) );
 	force =  force + deltaPos;
       }
-      __syncthreads();
+//       __syncthreads();
     }
       
 
