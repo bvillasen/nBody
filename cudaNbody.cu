@@ -25,9 +25,9 @@ __global__ void main_kernel( const unsigned char usingAnimation, const unsigned 
     
     
     //Initialize shared array for positions of other particles
-    __shared__ float posX_sh[ %(THREADS_PER_BLOCK)s ];
-    __shared__ float posY_sh[ %(THREADS_PER_BLOCK)s ];
-    __shared__ float posZ_sh[ %(THREADS_PER_BLOCK)s ];
+    __shared__ cudaP posX_sh[ %(THREADS_PER_BLOCK)s ];
+    __shared__ cudaP posY_sh[ %(THREADS_PER_BLOCK)s ];
+    __shared__ cudaP posZ_sh[ %(THREADS_PER_BLOCK)s ];
     
     Vector3D posOther, deltaPos;
     Vector3D force( 0., 0., 0. );
@@ -70,9 +70,9 @@ __global__ void main_kernel( const unsigned char usingAnimation, const unsigned 
 //       
     //Save data in animation buffer
     if (usingAnimation and step== 0){
-      cuda_VOB[3*tid + 0] = pos.x;
-      cuda_VOB[3*tid + 1] = pos.y;
-      cuda_VOB[3*tid + 2] = pos.z;
+      cuda_VOB[3*tid + 0] = float(pos.x);
+      cuda_VOB[3*tid + 1] = float(pos.y);
+      cuda_VOB[3*tid + 2] = float(pos.z);
     }
 
   }

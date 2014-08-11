@@ -1,6 +1,6 @@
 import numpy as np
 import sys, time, os, inspect, datetime
-#import h5py as h5
+import h5py as h5
 import matplotlib.pyplot as plt
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
@@ -19,7 +19,7 @@ from tools import printProgress
 
 
 nParticles = 1024*8*2
-dt = 5.
+dt = 10.
 epsilon = 5.
 
 cudaP = "float"
@@ -81,9 +81,9 @@ if showKernelMemInfo:
 ########################################################################
 from pycuda.elementwise import ElementwiseKernel
 ########################################################################
-moveParticles = ElementwiseKernel(arguments="float dt, float *posX, float *posY, float *posZ,\
-				     float *velX, float *velY, float *velZ,\
-				     float *accelX, float *accelY, float *accelZ",
+moveParticles = ElementwiseKernel(arguments="cudaP dt, cudaP *posX, cudaP *posY, cudaP *posZ,\
+				     cudaP *velX, cudaP *velY, cudaP *velZ,\
+				     cudaP *accelX, cudaP *accelY, cudaP *accelZ".replace( "cudaP", cudaP ),
 			      operation = "posX[i] = posX[i] + dt*( velX[i] + 0.5f*dt*accelX[i]);\
 				  posY[i] = posY[i] + dt*( velY[i] + 0.5f*dt*accelY[i]);\
 				  posZ[i] = posZ[i] + dt*( velZ[i] + 0.5f*dt*accelZ[i]);",
@@ -93,8 +93,8 @@ moveParticles = ElementwiseKernel(arguments="float dt, float *posX, float *posY,
 print "Initializing Data"
 initialMemory = getFreeMemory( show=True )  
 #Spherically uniform random distribution for initial positions
-initialTheta = 2*np.pi*np.random.rand(nParticles).astype(cudaPre) 
-initialPhi = np.arccos(2*np.random.rand(nParticles).astype(cudaPre) - 1) 
+initialTheta = 2*np.pi*np.random.rand(nParticles)
+initialPhi = np.arccos(2*np.random.rand(nParticles) - 1) 
 initialR = 5000.**3#*np.random.random( nParticles ).astype(cudaPre)
 initialR = np.power(initialR, 1./3)
 posX_h = initialR*np.cos(initialTheta)*np.sin(initialPhi)
@@ -103,18 +103,28 @@ posZ_h = initialR*np.cos(initialPhi)
 posX_h[:nParticles/2] += 5000
 posX_h[nParticles/2:] -= 5000
 #Spherically uniform random distribution for initial velocity
-initialTheta = 2*np.pi*np.random.rand(nParticles).astype(cudaPre) 
-initialPhi = np.arccos(2*np.random.rand(nParticles).astype(cudaPre) - 1)
+initialTheta = 2*np.pi*np.random.rand(nParticles)
+initialPhi = np.arccos(2*np.random.rand(nParticles) - 1)
 initialR = 0.
 velX_h = initialR*np.cos(initialTheta)*np.sin(initialPhi)
 velY_h = initialR*np.sin(initialTheta)*np.sin(initialPhi)
 velZ_h = initialR*np.cos(initialPhi)
-posX_d = gpuarray.to_gpu( posX_h )
-posY_d = gpuarray.to_gpu( posY_h )
-posZ_d = gpuarray.to_gpu( posZ_h )
-velX_d = gpuarray.to_gpu( velX_h )
-velY_d = gpuarray.to_gpu( velY_h )
-velZ_d = gpuarray.to_gpu( velZ_h )
+##################################################################
+#Disk Distribution
+initialR = 5000.*np.random.random( nParticles )
+posX_h = initialR*np.cos(initialTheta)
+posY_h = initialR*np.sin(initialTheta)
+posZ_h = 100*np.random.rand(nParticles)
+velX_h = -1.4*posY_h/initialR
+velY_h =  1.4*posX_h/initialR
+velZ_h = np.zeros(nParticles)
+##################################################################
+posX_d = gpuarray.to_gpu( posX_h.astype(cudaPre) )
+posY_d = gpuarray.to_gpu( posY_h.astype(cudaPre) )
+posZ_d = gpuarray.to_gpu( posZ_h.astype(cudaPre) )
+velX_d = gpuarray.to_gpu( velX_h.astype(cudaPre) )
+velY_d = gpuarray.to_gpu( velY_h.astype(cudaPre) )
+velZ_d = gpuarray.to_gpu( velZ_h.astype(cudaPre) )
 accelX_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelY_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelZ_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
@@ -133,8 +143,25 @@ def animationUpdate():
 	      np.intp(pAnim.cuda_VOB_ptr),  grid=grid, block=block)
   nAnimIter += 1
 
+def saveState():
+  dataFileName = "galaxy.hdf5"
+  dataFile = h5.File(dataFileName,'w')
+  dataFile.create_dataset( "posParticles", data=np.array([posX_d.get(), posY_d.get(), posZ_d.get() ]), compression='lzf')
+  dataFile.create_dataset( "velParticles", data=np.array([velX_d.get(), velY_d.get(), velZ_d.get() ]), compression='lzf')
+  dataFile.close()
+  print "Data Saved: ", dataFileName, "\n"
 
+def keyboard(*args):
+  global viewXmin, viewXmax, viewYmin, viewYmax
+  global showGrid, gridCenter
+  ESCAPE = '\033'
+  if args[0] == ESCAPE:
+    print "Ending Simulation"
+    sys.exit()
+  elif args[0] == "s":
+    saveState()
 
 if usingAnimation:
   pAnim.updateFunc = animationUpdate
+  pAnim.keyboard = keyboard
   pAnim.startAnimation()
