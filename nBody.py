@@ -31,7 +31,7 @@ mSun = 3     #kg
 initialR =  5000
 
 dt = 10
-epsilon = 10.
+epsilon = 5.
 
 cudaP = "float"
 devN = None
@@ -56,7 +56,7 @@ GMass = cudaPre( G*mSun )
 
 if usingAnimation: import points3D as pAnim #points3D Animation
 #Set CUDA thread grid dimentions
-block = ( 128, 1, 1 )
+block = ( 256, 1, 1 )
 grid = ( (nParticles - 1)//block[0] + 1, 1, 1 )
 
 
@@ -196,11 +196,10 @@ def animationUpdate():
   end.synchronize()
   secs = start.time_till(end)*1e-3
   runningTime += secs
-  if nAnimIter == 100:
-    print 'Steps per sec: {0:0.2f}'.format( 100/runningTime  )
+  if nAnimIter == 50:
+    print 'Steps per sec: {0:0.2f}'.format( 50/runningTime  )
     nAnimIter, runningTime = 0, 0
   
-
 def keyboard(*args):
   global viewXmin, viewXmax, viewYmin, viewYmax
   global showGrid, gridCenter

@@ -41,6 +41,13 @@ public:
     return Vector3D( a*x, a*y, a*z );
   }  
   
+  __host__ __device__ Vector3D& operator+=(const Vector3D &v) {
+	  x+=v.x;
+	  y+=v.y;
+	  z+=v.z;
+	  return *this;
+  }
+  
   __host__ __device__ void redefine( cudaP x0, cudaP y0, cudaP z0 ){
     x = x0;
     y = y0;

@@ -22,6 +22,7 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass,
     __shared__ cudaP posY_sh[ %(TPB)s ];
     __shared__ cudaP posZ_sh[ %(TPB)s ];
     
+    
     Vector3D posOther, deltaPos;
     Vector3D force( 0., 0., 0. );
     cudaP dist;
@@ -35,11 +36,10 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass,
 	posOther.redefine( posX_sh[ otherParticle], posY_sh[ otherParticle], posZ_sh[ otherParticle] );
 	deltaPos = posOther - pos;
 	dist = sqrt( deltaPos.norm2() + epsilon );
-	deltaPos = deltaPos*(Gmass/( dist*dist*dist ) );
-	force =  force + deltaPos;
+	force += deltaPos*(Gmass/( dist*dist*dist ) );
       }
     }
-    force = force*Gmass;
+
 
     velX[tid] = vel.x + 0.5*dt*( accelX[tid] + force.x );
     velY[tid] = vel.y + 0.5*dt*( accelY[tid] + force.y );
