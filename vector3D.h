@@ -37,7 +37,7 @@ public:
     return x*v.x + y*v.y + z*v.z;
   }
   
-  __host__ __device__ Vector3D operator/( cudaP a ){
+  __host__ __device__ Vector3D operator*( cudaP a ){
     return Vector3D( a*x, a*y, a*z );
   }  
   
