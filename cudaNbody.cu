@@ -22,7 +22,7 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
     Vector3D vel( velX[tid], velY[tid], velZ[tid] );
     Vector3D force( 0., 0., 0. );
     Vector3D posOther, deltaPos;
-    cudaP dist;
+    cudaP distInv;
     int idOther;
     for ( int blockNumber=0; blockNumber<gridDim.x; blockNumber++ ){
       idOther =  blockNumber*blockDim.x + threadIdx.x;
@@ -36,8 +36,8 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
 	if (idOther >= blockDim.x ) idOther = 0;
 	posOther.redefine( posX_sh[ idOther ], posY_sh[ idOther ], posZ_sh[ idOther ] );
 	deltaPos = posOther - pos;
-	dist = sqrt( deltaPos.norm2() + epsilon );
-	deltaPos = deltaPos*(1/( dist*dist*dist ) );
+	distInv = rsqrt( deltaPos.norm2() + epsilon );
+	deltaPos = deltaPos*(distInv*distInv*distInv );
 	force += deltaPos;
 	idOther++;
       }
