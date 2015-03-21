@@ -12,18 +12,16 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
   
   if (tid < nParticles){
     
-    //Initialize particle position and velocity
-    Vector3D pos( posX[tid], posY[tid], posZ[tid] );
-    Vector3D vel( velX[tid], velY[tid], velZ[tid] );
-    
-    
     //Initialize shared array for positions of other particles
     __shared__ cudaP posX_sh[ %(TPB)s ];
     __shared__ cudaP posY_sh[ %(TPB)s ];
     __shared__ cudaP posZ_sh[ %(TPB)s ];
     
-    Vector3D posOther, deltaPos;
+    //Initialize particle position and velocity
+    Vector3D pos( posX[tid], posY[tid], posZ[tid] );
+    Vector3D vel( velX[tid], velY[tid], velZ[tid] );
     Vector3D force( 0., 0., 0. );
+    Vector3D posOther, deltaPos;
     cudaP dist;
     int idOther;
     for ( int blockNumber=0; blockNumber<gridDim.x; blockNumber++ ){
@@ -39,11 +37,12 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
 	posOther.redefine( posX_sh[ idOther ], posY_sh[ idOther ], posZ_sh[ idOther ] );
 	deltaPos = posOther - pos;
 	dist = sqrt( deltaPos.norm2() + epsilon );
-	deltaPos = deltaPos*(Gmass/( dist*dist*dist ) );
+	deltaPos = deltaPos*(1./( dist*dist*dist ) );
 	force += deltaPos;
 	idOther++;
       }
     }
+    force *= Gmass;
     
     velX[tid] = vel.x + 0.5*dt*( accelX[tid] + force.x );
     velY[tid] = vel.y + 0.5*dt*( accelY[tid] + force.y );

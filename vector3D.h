@@ -25,19 +25,19 @@ public:
     z /= mag;
   }
   
-  __host__ __device__ Vector3D operator+( Vector3D &v ){
+  __host__ __device__ Vector3D operator+( const Vector3D &v ){
     return Vector3D( x+v.x, y+v.y, z+v.z );
   }
   
-  __host__ __device__ Vector3D operator-( Vector3D &v ){
+  __host__ __device__ Vector3D operator-( const Vector3D &v ){
     return Vector3D( x-v.x, y-v.y, z-v.z );
   }
   
-  __host__ __device__ cudaP operator*( Vector3D &v ){
+  __host__ __device__ cudaP operator*( const Vector3D &v ){
     return x*v.x + y*v.y + z*v.z;
   }
   
-  __host__ __device__ Vector3D operator*( cudaP a ){
+  __host__ __device__ Vector3D operator*( const cudaP a ){
     return Vector3D( a*x, a*y, a*z );
   }  
   
@@ -45,6 +45,18 @@ public:
 	  x+=v.x;
 	  y+=v.y;
 	  z+=v.z;
+	  return *this;
+  }
+  __host__ __device__ Vector3D& operator-=(const Vector3D &v) {
+	  x-=v.x;
+	  y-=v.y;
+	  z-=v.z;
+	  return *this;
+  }
+  __host__ __device__ Vector3D& operator*=(const cudaP a) {
+	  x*=a;
+	  y*=a;
+	  z*=a;
 	  return *this;
   }
   
