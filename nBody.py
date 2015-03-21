@@ -19,7 +19,7 @@ from tools import printProgressTime, timeSplit
 from dataAnalysis import *
 
 
-nParticles = 1024*16*2*2*4*4
+nParticles = 1024*16*2
 
 G    = 6.67384e-11 #m**2/(kg*s**2)
 mSun = 1.98e30     #kg

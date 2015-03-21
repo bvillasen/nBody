@@ -28,17 +28,20 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
     int idOther;
     for ( int blockNumber=0; blockNumber<gridDim.x; blockNumber++ ){
       idOther =  blockNumber*blockDim.x + threadIdx.x;
-      posX_sh[ threadIdx.x ] = posX[ idOther  ];
+      posX_sh[ threadIdx.x ] = posX[ idOther ];
       posY_sh[ threadIdx.x ] = posY[ idOther ];
       posZ_sh[ threadIdx.x ] = posZ[ idOther ];
       __syncthreads();
       
-      for ( idOther=0; idOther<blockDim.x; idOther++ ){
-	posOther.redefine( posX_sh[ idOther], posY_sh[ idOther], posZ_sh[ idOther] );
+      idOther = threadIdx.x;
+      for ( int i=0; i<blockDim.x; i++ ){
+	if (idOther >= blockDim.x ) idOther = 0;
+	posOther.redefine( posX_sh[ idOther ], posY_sh[ idOther ], posZ_sh[ idOther ] );
 	deltaPos = posOther - pos;
 	dist = sqrt( deltaPos.norm2() + epsilon );
 	deltaPos = deltaPos*(Gmass/( dist*dist*dist ) );
 	force += deltaPos;
+	idOther++;
       }
     }
     
