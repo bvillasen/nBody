@@ -15,11 +15,11 @@ parentDirectory = currentDirectory[:currentDirectory.rfind("/")]
 toolsDirectory = parentDirectory + "/tools"
 sys.path.append( toolsDirectory )
 from cudaTools import setCudaDevice, getFreeMemory, kernelMemoryInfo
-from tools import printProgress
+from tools import printProgressTime, timeSplit
 from dataAnalysis import *
 
 
-nParticles = 1024*16*2*2
+nParticles = 1024*16*2*2*4*4
 
 G    = 6.67384e-11 #m**2/(kg*s**2)
 mSun = 1.98e30     #kg
@@ -186,7 +186,7 @@ def animationUpdate():
   start, end = cuda.Event(), cuda.Event()
   start.record()
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-  mainKernel( np.int32(nParticles), GMass,
+  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
 	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
 	      accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon),
@@ -217,10 +217,39 @@ runningTime = 0
 
 #Start Simulation
 if plotting: plt.ion(), plt.show()
-print "Starting simulation"
-if cudaP == "double": print "Using double precision"
+print "\nStarting simulation"
+print " Using {0} precision".format( cudaP )
+print ' nParticles: ', nParticles
+
 
 if usingAnimation:
   pAnim.updateFunc = animationUpdate
   pAnim.keyboard = keyboard
   pAnim.startAnimation()
+  
+  
+totalSteps = 10
+print ' nSteps: ', totalSteps
+print ''
+start, end = cuda.Event(), cuda.Event()
+for stepCounter in range(totalSteps):
+  start.record()
+  if stepCounter%1 == 0: printProgressTime( stepCounter, totalSteps,  runningTime )
+  moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
+  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
+	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
+	      accelX_d, accelY_d, accelZ_d,
+	      cudaPre( dt ), cudaPre(epsilon),
+	      np.int32(0),  grid=grid, block=block )
+  end.record()
+  end.synchronize()
+  runningTime += start.time_till(end)*1e-3
+  
+  
+h, m, s = timeSplit( runningTime )
+print '\n\nTotal time: {0}:{1:02}:{2:02} '.format( h, m, s )
+
+
+
+
+
