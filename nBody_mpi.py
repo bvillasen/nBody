@@ -14,12 +14,12 @@ toolsDirectory = parentDirectory + "/tools"
 sys.path.append( toolsDirectory )
 from cudaTools import *
 from tools import printProgressTime, timeSplit
+from mpiTools import transfer
 
 
-
-nParticles = 1024*16*2
-#nParticles = 1024*16*2*32
-totalSteps = 100
+nParticles = 1024*16*2*2*4
+nParticles = 1024*16*2*32
+totalSteps = 10
 
 G    = 1     #m**2/(kg*s**2)
 mSun = 3     #kg
@@ -45,13 +45,17 @@ pId = MPIcomm.Get_rank()
 nProc = MPIcomm.Get_size()
 name = MPI.Get_processor_name()
 
+pLeft  = nProc-1 if pId==0   else pId-1
+pRight = 0 if pId==(nProc-1) else pId+1
+
+
 if pId == 0:
   print "\nMPI-CUDA nBoby"
   print " nProcess: {0}\n".format(nProc) 
 MPIcomm.Barrier()
   
 
-print "[pId {0}] Host name: {1}".format( pId, name )
+print "[pId {0}] Host: {1}".format( pId, name )
   
 #Initialize CUDA
 cudaCtx, cudaDev = mpi_setCudaDevice(pId, 0, MPIcomm, show=False)
@@ -131,21 +135,26 @@ MPIcomm.Barrier()
 
 computeTime  = 0
 transferTime = 0
+step = 0
 start, end = cuda.Event(), cuda.Event()
 for stepCounter in range(totalSteps):
-  start.record()
   if stepCounter%1==0 and pId==0: printProgressTime( stepCounter, totalSteps,  computeTime + transferTime )
-  moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
   #Transfer positions
-  
+  start.record()
+  posSend_h[0], posSend_h[1], posSend_h[2] = posX_d.get(), posY_d.get(), posZ_d.get() 
+  transfer( pId, pRight, pLeft, posSend_h, posRecv_h, step,  MPIcomm )
+  posSend_h, posRecv_h, posRecv_h, posSend_h
+  end.record(), end.synchronize()
+  transferTime += start.time_till(end)*1e-3
   MPIcomm.Barrier()
+  start.record()
+  moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
   mainKernel( np.int32(nParticles), GMass, np.int32(0), 
 	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
 	      accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon),
 	      np.int32(0),  grid=grid, block=block )
-  end.record()
-  end.synchronize()
+  end.record(), end.synchronize()
   computeTime += start.time_till(end)*1e-3
   
  
