@@ -37,8 +37,7 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
 	posOther.redefine( posX_sh[ idOther ], posY_sh[ idOther ], posZ_sh[ idOther ] );
 	deltaPos = posOther - pos;
 	distInv = rsqrt( deltaPos.norm2() + epsilon );
-	deltaPos = deltaPos*(distInv*distInv*distInv );
-	force += deltaPos;
+ 	force += deltaPos*(distInv*distInv*distInv );
 	idOther++;
       }
     }
