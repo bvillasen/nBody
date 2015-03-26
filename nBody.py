@@ -1,5 +1,5 @@
 import numpy as np
-import sys, time, os, inspect, datetime
+import sys, time, os 
 import h5py as h5
 import matplotlib.pyplot as plt
 import pycuda.driver as cuda
@@ -19,7 +19,9 @@ from tools import printProgressTime, timeSplit
 from dataAnalysis import *
 
 
-nParticles = 1024*16*2
+nParticles = 1024*32
+#nParticles = 1024*16*2*32
+totalSteps = 100
 
 G    = 6.67384e-11 #m**2/(kg*s**2)
 mSun = 1.98e30     #kg
@@ -30,10 +32,10 @@ G    = 1 #m**2/(kg*s**2)
 mSun = 3     #kg
 initialR =  5000
 
-dt = 10
-epsilon = 5.
+dt = 5
+epsilon = 0.001
 
-cudaP = "float"
+cudaP = "double"
 devN = None
 usingAnimation = False
 showKernelMemInfo = False
@@ -56,7 +58,7 @@ GMass = cudaPre( G*mSun )
 
 if usingAnimation: import points3D as pAnim #points3D Animation
 #Set CUDA thread grid dimentions
-block = ( 256, 1, 1 )
+block = ( 160, 1, 1 )
 grid = ( (nParticles - 1)//block[0] + 1, 1, 1 )
 
 
@@ -145,9 +147,10 @@ initialTheta = 2*np.pi*np.random.rand(nParticles)
 initialPhi = np.arccos(2*np.random.rand(nParticles) - 1) 
 #initialR = ( 50*pc )**3#*np.random.random( nParticles ).astype(cudaPre)
 #initialR = np.power(initialR, 1./3)
-posX_h = initialR*np.cos(initialTheta)*np.sin(initialPhi)
-posY_h = initialR*np.sin(initialTheta)*np.sin(initialPhi)
-posZ_h = initialR*np.cos(initialPhi)
+posX_h = ( initialR*np.cos(initialTheta)*np.sin(initialPhi) ).astype(cudaPre)
+posY_h = ( initialR*np.sin(initialTheta)*np.sin(initialPhi) ).astype(cudaPre)
+posZ_h = ( initialR*np.cos(initialPhi) ).astype(cudaPre)
+pos_h = ( np.concatenate([ posX_h, posY_h, posZ_h ]) ).astype(cudaPre)
 #posX_h[:nParticles/2] += 5000
 #posX_h[nParticles/2:] -= 5000
 ##Spherically uniform random distribution for initial velocity
@@ -168,9 +171,10 @@ velZ_h = initialR*np.cos(initialPhi)
 #velY_h =  1.6*posX_h/initialR
 #velZ_h = np.zeros(nParticles)
 ##################################################################
-posX_d = gpuarray.to_gpu( posX_h.astype(cudaPre) )
-posY_d = gpuarray.to_gpu( posY_h.astype(cudaPre) )
-posZ_d = gpuarray.to_gpu( posZ_h.astype(cudaPre) )
+posX_d = gpuarray.to_gpu( posX_h )
+posY_d = gpuarray.to_gpu( posY_h )
+posZ_d = gpuarray.to_gpu( posZ_h )
+pos_d  = gpuarray.to_gpu( pos_h )
 velX_d = gpuarray.to_gpu( velX_h.astype(cudaPre) )
 velY_d = gpuarray.to_gpu( velY_h.astype(cudaPre) )
 velZ_d = gpuarray.to_gpu( velZ_h.astype(cudaPre) )
@@ -190,7 +194,7 @@ def animationUpdate():
 	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
 	      accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon),
-	      np.intp(pAnim.cuda_VOB_ptr),  grid=grid, block=block )
+	      np.intp(pAnim.cuda_VOB_ptr), np.int32(0),  grid=grid, block=block )
   nAnimIter += 1
   end.record()
   end.synchronize()
@@ -228,7 +232,7 @@ if usingAnimation:
   pAnim.startAnimation()
   
   
-totalSteps = 10
+
 print ' nSteps: ', totalSteps
 print ''
 start, end = cuda.Event(), cuda.Event()
@@ -236,11 +240,11 @@ for stepCounter in range(totalSteps):
   start.record()
   if stepCounter%1 == 0: printProgressTime( stepCounter, totalSteps,  runningTime )
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
+  mainKernel( np.int32(nParticles), GMass, np.int32(0), 
 	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
 	      accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon),
-	      np.int32(0),  grid=grid, block=block )
+	      np.int32(0), np.int32(0),  grid=grid, block=block )
   end.record()
   end.synchronize()
   runningTime += start.time_till(end)*1e-3
