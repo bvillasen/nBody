@@ -16,16 +16,17 @@ from cudaTools import *
 from tools import printProgressTime, timeSplit
 from mpiTools import transferData
 
-nParticles = 1024*16*2*2*4
-nParticles = 1024*16*2*16
-totalSteps = 10
+nParticles = 1024*32
+nParticles = 1024*256
+nParticles = 1024*512
+totalSteps = 100
 
 G    = 1     #m**2/(kg*s**2)
 mSun = 3     #kg
 initialR =  5000
 
 dt = 10
-epsilon = 5.
+epsilon = 0.001
 
 cudaP = "double"
 #Get in-line parameters
@@ -146,6 +147,33 @@ def sendPositions():
   posZ_d.set( posRecv_h[2] )
   #posSend_h, posRecv_h, posRecv_h, posSend_h
 
+def timeStep():
+  global transferTime, computeTime
+  start.record()
+  moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
+  mainKernel( np.int32(nParticles), GMass, np.int32(0), 
+	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
+	      accelX_d, accelY_d, accelZ_d,
+	      cudaPre( dt ), cudaPre(epsilon),
+	      np.int32(0), np.int32(0), grid=grid, block=block )
+  end.record(), end.synchronize()
+  computeTime += start.time_till(end)*1e-3
+  for step in range(1,4):
+    #Transfer positions
+    start.record()
+    sendPositions()
+    MPIcomm.Barrier()
+    end.record(), end.synchronize()
+    transferTime += start.time_till(end)*1e-3
+    #Compute forces with other positions
+    start.record()
+    mainKernel( np.int32(nParticles), GMass, np.int32(0), 
+		posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
+		accelX_d, accelY_d, accelZ_d,
+		cudaPre( 0. ), cudaPre(epsilon),
+		np.int32(0), np.int32(step), grid=grid, block=block )
+    end.record(), end.synchronize()
+    computeTime += start.time_till(end)*1e-3
 
 ###########################################################################
 ###########################################################################
@@ -153,7 +181,8 @@ def sendPositions():
 if pId == 0:
   print "\nStarting simulation"
   print " Using {0} precision".format( cudaP )
-  print ' nParticles: ', nParticles
+  print " Total particles: ", nParticles*nProc
+  print ' Particles per gpu: ', nParticles
   print ' nSteps: ', totalSteps
   print ''
 MPIcomm.Barrier()
@@ -168,25 +197,10 @@ for stepCounter in range(totalSteps):
   if stepCounter%1==0 and pId==0: printProgressTime( stepCounter, totalSteps,  computeTime + transferTime + saveTime )
   #Save positions
   start.record()
-  posHD.create_dataset(str(stepCounter), data=posSend_h )
+  posHD.create_dataset( str(stepCounter), data=posSend_h )
   end.record(), end.synchronize()
   saveTime += start.time_till(end)*1e-3
-  for i in range(4):
-    start.record()
-      #Transfer positions
-    start.record()
-    sendPositions()
-    end.record(), end.synchronize()
-    transferTime += start.time_till(end)*1e-3
-    MPIcomm.Barrier()
-    moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-    mainKernel( np.int32(nParticles), GMass, np.int32(0), 
-		posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
-		accelX_d, accelY_d, accelZ_d,
-		cudaPre( dt ), cudaPre(epsilon),
-		np.int32(0),  grid=grid, block=block )
-    end.record(), end.synchronize()
-    computeTime += start.time_till(end)*1e-3
+  timeStep()
   
  
 if pId == 0:
@@ -197,9 +211,6 @@ if pId == 0:
   print 'Transfer time: {0} secs   {1:2.2f}%  '.format( int(transferTime), 100*transferTime/totalTime )
   print 'Save time: {0} secs   {1:2.2f}%  '.format( int(saveTime), 100*saveTime/totalTime )
   print'\n'
-
-
-
 
 ######################################################################
 #Clean and Finalize
