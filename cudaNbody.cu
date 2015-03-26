@@ -7,7 +7,7 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
 			     cudaP *posX, cudaP *posY, cudaP *posZ, 
 			     cudaP *velX, cudaP *velY, cudaP *velZ,
 			     cudaP *accelX, cudaP *accelY, cudaP *accelZ,
-			     cudaP dt, cudaP epsilon, float *cuda_VOB){
+			     cudaP dt, cudaP epsilon, float *cuda_VOB, int step){
   int tid = blockDim.x*blockIdx.x + threadIdx.x;
   
   if (tid < nParticles){
@@ -21,6 +21,8 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
     Vector3D pos( posX[tid], posY[tid], posZ[tid] );
     Vector3D vel( velX[tid], velY[tid], velZ[tid] );
     Vector3D force( 0., 0., 0. );
+//     if (step > 0) force.redefine( accelX[tid], accelY[tid], accelZ[tid] ); 
+    	
     Vector3D posOther, deltaPos;
     cudaP distInv;
     int idOther;
@@ -46,10 +48,12 @@ __global__ void main_kernel( const int nParticles, const cudaP Gmass, const int 
     velX[tid] = vel.x + 0.5*dt*( accelX[tid] + force.x );
     velY[tid] = vel.y + 0.5*dt*( accelY[tid] + force.y );
     velZ[tid] = vel.z + 0.5*dt*( accelZ[tid] + force.z );
+    
     accelX[tid] = force.x;
     accelY[tid] = force.y;
     accelZ[tid] = force.z;
-     
+        
+    
     //Save data in animation buffer
     if (usingAnimation ){
       cuda_VOB[3*tid + 0] = float(pos.x);
