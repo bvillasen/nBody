@@ -20,7 +20,7 @@ from dataAnalysis import *
 
 
 nParticles = 1024*32
-#nParticles = 1024*16*2*32
+#nParticles = 1024*64
 totalSteps = 100
 
 G    = 6.67384e-11 #m**2/(kg*s**2)
@@ -33,7 +33,7 @@ mSun = 3     #kg
 initialR =  5000
 
 dt = 5
-epsilon = 0.001
+epsilon = 5
 
 cudaP = "double"
 devN = None
@@ -191,10 +191,10 @@ def animationUpdate():
   start.record()
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
   mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
-	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
-	      accelX_d, accelY_d, accelZ_d,
-	      cudaPre( dt ), cudaPre(epsilon),
-	      np.intp(pAnim.cuda_VOB_ptr), np.int32(0),  grid=grid, block=block )
+	      posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d,
+	      velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d,
+	      cudaPre( dt ), cudaPre(epsilon), np.int32(1),
+	      np.intp(pAnim.cuda_VOB_ptr),   grid=grid, block=block )
   nAnimIter += 1
   end.record()
   end.synchronize()
@@ -240,11 +240,11 @@ for stepCounter in range(totalSteps):
   start.record()
   if stepCounter%1 == 0: printProgressTime( stepCounter, totalSteps,  runningTime )
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-  mainKernel( np.int32(nParticles), GMass, np.int32(0), 
-	      posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d,
-	      accelX_d, accelY_d, accelZ_d,
-	      cudaPre( dt ), cudaPre(epsilon),
-	      np.int32(0), np.int32(0),  grid=grid, block=block )
+  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
+	      posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d,
+	      velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d,
+	      cudaPre( dt ), cudaPre(epsilon), np.int32(1),
+	      np.intp(0),   grid=grid, block=block )
   end.record()
   end.synchronize()
   runningTime += start.time_till(end)*1e-3
