@@ -30,6 +30,7 @@ initialR =  1*pc #*np.random.random( nParticles ).astype(cudaPre)
 
 G    = 1 #m**2/(kg*s**2)
 mSun = 3     #kg
+pMass = 1
 initialR =  5000
 
 dt = 5
@@ -53,16 +54,30 @@ for option in sys.argv:
 precision  = {"float":np.float32, "double":np.float64} 
 cudaPre = precision[cudaP]
 
+pMass = cudaPre( pMass )
+G = cudaPre( G )
+GMass = G*pMass 
 
-GMass = cudaPre( G*mSun ) 
 
-if usingAnimation: import points3D as pAnim #points3D Animation
+#Initialize file for saving data
+energyList = []
+outputDir = '/home_local/bruno/data/nBody/'
+if not os.path.exists( outputDir ): os.makedirs( outputDir )
+outDataFile = outputDir + 'test_all.h5'
+outFile = h5.File( outDataFile , "w")
+posHD = outFile.create_group("pos")
+energyHD = outFile.create_group("energy")
+
+
+
+
 #Set CUDA thread grid dimentions
 block = ( 160, 1, 1 )
 grid = ( (nParticles - 1)//block[0] + 1, 1, 1 )
 
 
 if usingAnimation:
+  import points3D as pAnim #points3D Animation
   pAnim.nPoints = nParticles
   pAnim.viewXmin, pAnim.viewXmax = -2*initialR, 2*initialR
   pAnim.viewYmin, pAnim.viewYmax = -2*initialR, 2*initialR
@@ -90,12 +105,11 @@ for fileName in codeFiles:
 cudaCodeStringTemp = open("cudaNbody.cuT", "r").read()
 cudaCodeString = cudaCodeStringTemp % { "TPB":block[0], "gDIM":grid[0], 'bDIM':block[0] }
 cudaCode = SourceModule(cudaCodeString, no_extern_c=True, include_dirs=[currentDirectory])
-mainKernel = cudaCode.get_function("main_kernel" )
+getAcccelKernel = cudaCode.get_function("getAccel_kernel" )
+getEnergyKernel = cudaCode.get_function("getEnergy_kernel" )
 if showKernelMemInfo: 
   kernelMemoryInfo(mainKernel, 'mainKernel')
   sys.exit()
-########################################################################
-from pycuda.elementwise import ElementwiseKernel
 ########################################################################
 moveParticles = ElementwiseKernel(arguments="cudaP dt, cudaP *posX, cudaP *posY, cudaP *posZ,\
 				     cudaP *velX, cudaP *velY, cudaP *velZ,\
@@ -104,7 +118,18 @@ moveParticles = ElementwiseKernel(arguments="cudaP dt, cudaP *posX, cudaP *posY,
 				           posY[i] = posY[i] + dt*( velY[i] + 0.5f*dt*accelY[i]);\
 				           posZ[i] = posZ[i] + dt*( velZ[i] + 0.5f*dt*accelZ[i]);",
 			      name ="moveParticles")
-##################################################################
+########################################################################
+def getEnergy( step, time, energyList ):
+  getEnergyKernel( np.int32( nParticles ), G, pMass, 
+		posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d, 
+		velX_d, velY_d, velZ_d, energyAll_d, 
+		cudaPre(epsilon), np.int32(1), grid=grid, block=block )
+  energyAll_h = energyAll_d.get()
+  energyList.append( [ step, time, energyAll_h.sum() ] )
+  
+
+
+########################################################################
 def loadState( files=["galaxy.hdf5"] ):
   posAll = []
   velAll = []
@@ -117,14 +142,6 @@ def loadState( files=["galaxy.hdf5"] ):
     velAll.append( vel )
     dataFile.close()
   return posAll, velAll
-##################################################################
-def loadGalaxy( fileName = "galaxy.hdf5", nParticles= 32000  ):
-  dataDir = "/home/bruno/Desktop/data/yt/h5/"
-  dataFile = h5.File( dataDir + fileName ,'r')
-  dataAll = dataFile.get("dataAll")[...]
-  print '\nLoading data... \n file: {0} \n particles: {1}\n'.format(fileName, dataAll.shape[0] )
-  data = dataAll[:nParticles,:]
-  return data
 
 ########################################################################
 def saveState():
@@ -181,6 +198,13 @@ velZ_d = gpuarray.to_gpu( velZ_h.astype(cudaPre) )
 accelX_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelY_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
 accelZ_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
+energyAll_d = gpuarray.to_gpu( np.zeros( nParticles, dtype=cudaPre ) )
+#Get initial accel
+getAcccelKernel( np.int32(nParticles), GMass, np.int32(0),
+	    posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d,
+	    velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d,
+	    cudaPre( 0. ), cudaPre(epsilon), np.int32(1),
+	    np.intp(0),   grid=grid, block=block )
 finalMemory = getFreeMemory( show=False )
 print " Total Global Memory Used: {0} Mbytes".format(float(initialMemory-finalMemory)/1e6) 
 
@@ -190,7 +214,7 @@ def animationUpdate():
   start, end = cuda.Event(), cuda.Event()
   start.record()
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
+  getAcccelKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
 	      posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d,
 	      velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon), np.int32(1),
@@ -218,6 +242,7 @@ def keyboard(*args):
 
 nAnimIter = 0
 runningTime = 0
+simulationTime = 0
 
 #Start Simulation
 if plotting: plt.ion(), plt.show()
@@ -233,27 +258,37 @@ if usingAnimation:
   
   
 
-print ' nSteps: ', totalSteps
-print ''
+
+
+
+
+print ' nSteps: {0} \n'.format( totalSteps )
+print " Output: {0} \n".format( outDataFile )
 start, end = cuda.Event(), cuda.Event()
 for stepCounter in range(totalSteps):
   start.record()
   if stepCounter%1 == 0: printProgressTime( stepCounter, totalSteps,  runningTime )
+  getEnergy( stepCounter, simulationTime, energyList )
   moveParticles( cudaPre(dt), posX_d, posY_d, posZ_d, velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d )
-  mainKernel( np.int32(nParticles), GMass, np.int32(usingAnimation), 
+  getAcccelKernel( np.int32(nParticles), GMass, np.int32(usingAnimation),
 	      posX_d, posY_d, posZ_d, posX_d, posY_d, posZ_d,
 	      velX_d, velY_d, velZ_d, accelX_d, accelY_d, accelZ_d,
 	      cudaPre( dt ), cudaPre(epsilon), np.int32(1),
 	      np.intp(0),   grid=grid, block=block )
+  simulationTime += dt
   end.record()
   end.synchronize()
   runningTime += start.time_till(end)*1e-3
   
   
+  
 h, m, s = timeSplit( runningTime )
 print '\n\nTotal time: {0}:{1:02}:{2:02} '.format( h, m, s )
 
+#Write energy
+energyList = np.array( energyList )
+energyHD.create_dataset( 'steps', data= energyList[:,0], compression='lzf' )
+energyHD.create_dataset( 'time', data= energyList[:,1], compression='lzf' )
+energyHD.create_dataset( 'values', data= energyList[:,2], compression='lzf' )
 
-
-
-
+outFile.close()
